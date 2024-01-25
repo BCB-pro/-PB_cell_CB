@@ -1,0 +1,171 @@
+---
+title: "Analyse"
+author: "Baptiste Crinière-Boizet"
+output:
+  html_document:
+    theme: united
+    toc: yes
+    toc_float: yes
+    code_folding: hide
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(fig.align = "center")
+knitr::opts_chunk$set(out.width="90%")
+```
+
+```{r fig.align = 'right', out.width = "250px", echo = FALSE}
+knitr::include_graphics("ICM_rvb.png")
+```
+
+```{r}
+# Library
+library(ggsci)
+library(tidyverse)
+library(ggpubr)
+
+# Data management
+data <- openxlsx::read.xlsx("/home/baptiste.criniere/Documents/PB_cell_CB/Data/Tableau data 170723.xlsx")
+names(data) <- c("ID", "Group", "Cell_count", "Cell_tot", "Astros", "Area", "Prop", "Density")
+data <- data %>% 
+  dplyr::mutate(ID = ID %>% factor) %>% 
+  dplyr::mutate(Group = Group %>% factor)
+```
+
+
+# Raw data analysis
+## Bi-variate analysis
+### Correlation between the total number of cell and the density
+This first graph suggests a correlation between cell number and cell density. This correlation is 0.37 and is significantly different from zero (pvalue=0.017).
+```{r}
+data %>% 
+  ggplot(aes(x = Cell_tot, y = Density))+
+  geom_point(aes(color = Group), size = 1.5)+
+  geom_smooth(method = "lm", se = F, color = "black", size = 0.75)+
+  theme_classic()+
+  stat_cor()+
+  scale_color_manual(values = c("darkred", "darkblue"))+
+  labs(x = "Total")
+```
+
+### Boxplot & wilcoxon test 
+The boxplots show a significant trend for a difference in proportions between the two cell lines regardless of the total number of cells (Wilcoxon rank-sum test, pvalue=0.0054). The average density in the KO group is 1.1e-4 and in the WT group 1.6e-4.
+```{r}
+data %>% 
+  ggplot(aes(x = Group, y = Density))+
+  geom_boxplot(aes(color = Group), outlier.shape = NA)+
+  geom_jitter(aes(color = Group), size = 2, shape = 1)+
+  stat_compare_means(label.x = 1.5)+
+  theme_classic()+
+  scale_color_manual(values = c("darkred", "darkblue"))
+```
+
+## Linear model {.tabset}
+Testing the effects of the cell Line and the total number of cells based on a linear regression model fitted to the proportion values. Significant interaction between Group and Total (p=6e-06) suggests that the group difference varies with the total number of cells.
+
+### Data visualisation
+```{r}
+data %>% 
+  ggplot(aes(x = Cell_tot, y = Density, color = Group))+
+  geom_point()+
+  geom_smooth(method = "lm", se = FALSE, size = 0.75)+
+  stat_cor()+
+  facet_grid(rows = vars(Group))+
+  theme_classic()+
+  scale_color_manual(values = c("darkred", "darkblue"))+
+  labs(x = "Total")
+```
+
+### Model
+```{r}
+model <- lm(Density ~ Cell_tot*Group, data = data)
+car::Anova(model)
+```
+
+### Checking model assumptions
+Below is a quality control of the fitted LM indicating a poor adjustment of the data (important deviation from a normal distribution).
+```{r}
+ggResidpanel::resid_panel(model)
+```
+
+## Linear model with log transformation {.tabset}
+The log is usually used to symmetrize a skewed distribution and reduce the weight of extreme points. Considering a log transformation leads to the same conclusion with the LM, but with a fit that looks better visually.
+
+### Data visualisation
+```{r}
+data %>% 
+  ggplot(aes(x = Cell_tot, y = log(Density), color = Group))+
+  geom_point()+
+  geom_smooth(method = "lm", se = FALSE, size = 0.75)+
+  stat_cor()+
+  facet_grid(rows = vars(Group))+
+  theme_classic()+
+  scale_color_manual(values = c("darkred", "darkblue"))+
+  labs(x = "Total")
+```
+
+### Model
+```{r}
+model <- lm(log(Density) ~ Cell_tot*Group, data = data)
+car::Anova(model)
+```
+
+### Checking model assumptions
+```{r}
+ggResidpanel::resid_panel(model)
+```
+
+
+# Partial data
+The following analysis excludes 5 values from 3 samples “WT3.2”, “K-8.1MBPQK11” and “K-8.1MBPQK12”.
+```{r}
+data_bis <- data %>% 
+  dplyr::filter(!(ID %in% c("WT3.2", "K-8.1MBPQK11", "K-8.1MBPQK12")))
+```
+
+## Bi-variate analysis
+### Boxplot & wilcoxon test
+The boxplots show a significant trend for a difference in proportions between the two cell lines regardless of the total number of cells (Wilcoxon rank-sum test, pvalue=0.0035).
+
+```{r}
+data_bis %>% 
+  ggplot(aes(x = Group, y = Density))+
+  geom_boxplot(aes(color = Group), outlier.shape = NA)+
+  geom_jitter(aes(color = Group), size = 2, shape = 1)+
+  stat_compare_means(label.x = 1.5)+
+  theme_classic()+
+  scale_color_manual(values = c("darkred", "darkblue"))
+```
+
+## Linear model {.tabset}
+In this new linear model, we no longer find an interaction effect (nor a group effect), only an effect of the total number of cells on density.
+Which seems to be the same for both groups.
+
+### Data visualisation
+```{r}
+data_bis %>% 
+  ggplot(aes(x = Cell_tot, y = Density, color = Group))+
+  geom_point()+
+  geom_smooth(method = "lm", se = FALSE, size = 0.75)+
+  stat_cor()+
+  facet_grid(rows = vars(Group))+
+  theme_classic()+
+  scale_color_manual(values = c("darkred", "darkblue"))+
+  labs(x = "Total")
+```
+
+### Model
+```{r}
+model <- lm(Density ~ Cell_tot*Group, data = data_bis)
+car::Anova(model)
+```
+
+### Checking model assumptions
+```{r}
+ggResidpanel::resid_panel(model)
+```
